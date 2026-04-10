@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Euclidean tessellation game</title>
+
+  <!-- Matter.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+
+  <!-- KaTeX for Math Formatting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.js"></script>
+
+  <style>
+    :root {
+      --bg-color: #050b14;
+      --container-color: #0f172a;
+      --text-color: #f8fafc;
+      --accent: #38bdf8;
+      --panel-bg: rgba(255, 255, 255, 0.03);
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #game-wrapper {
+      position: relative;
+      display: flex;
+      gap: 20px;
+      align-items: stretch;
+      max-width: 1300px;
+      width: 100%;
+      justify-content: center;
+    }
+
+    #canvas-container {
+      position: relative;
+      background-color: var(--container-color);
+      border-radius: 12px;
+      box-shadow: 0 15px 50px rgba(0, 0, 0, 0.9);
+      overflow: hidden;
+      transition: transform 0.05s;
+      height: 680px;
+      width: 450px;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .shake {
+      animation: shake 0.2s cubic-bezier(.36, .07, .19, .97) both;
+    }
+
+    @keyframes shake {
+      0% {
+        transform: translate(0, 0);
+      }
+
+      25% {
+        transform: translate(4px, 4px) rotate(1deg);
+      }
+
+      50% {
+        transform: translate(-4px, -3px) rotate(-1deg);
+      }
+
+      75% {
+        transform: translate(-3px, 4px) rotate(1deg);
+      }
+
+      100% {
+        transform: translate(0, 0);
+      }
+    }
+
+    .ui-panel {
+      background: var(--panel-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 15px;
+      width: 220px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+      box-sizing: border-box;
+      height: 680px;
+    }
+
+    .box {
+      text-align: center;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 8px;
+    }
+
+    h2 {
+      margin: 0 0 5px 0;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #64748b;
+    }
+
+    #score {
+      font-size: 28px;
+      font-weight: bold;
+      color: var(--accent);
+      transition: transform 0.1s;
+    }
+
+    #combo-text {
+      font-size: 13px;
+      color: #fcd53f;
+      min-height: 18px;
+      font-weight: bold;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    #next-shape-preview {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* Right Math Panel */
+    #analysis-panel {
+      width: 400px;
+      text-align: left;
+      position: relative;
+    }
+
+    .math-row {
+      margin: 4px 0;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    }
+
+    .math-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+      margin-bottom: 0;
+    }
+
+    .math-label {
+      font-size: 10px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+      letter-spacing: 1px;
+    }
+
+    .math-row {
+      margin: 8px 0;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    }
+
+    #idle-scanner {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #475569;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .scanning-dots::after {
+      content: '';
+      animation: dots 1.5s steps(4, end) infinite;
+    }
+
+    @keyframes dots {
+
+      0%,
+      20% {
+        content: '';
+      }
+
+      40% {
+        content: '.';
+      }
+
+      60% {
+        content: '..';
+      }
+
+      80%,
+      100% {
+        content: '...';
+      }
+    }
+
+    #fact-box {
+      background: rgba(56, 189, 248, 0.05);
+      border-left: 3px solid var(--accent);
+      padding: 8px 10px;
+      font-size: 11px;
+      color: #cbd5e1;
+      line-height: 1.4;
+      font-style: italic;
+      margin-bottom: 10px;
+      border-radius: 0 4px 4px 0;
+    }
+
+    #legend-box {
+      margin-top: auto;
+      padding-top: 10px;
+      border-top: 1px dashed #334155;
+      font-size: 10px;
+      color: #64748b;
+      line-height: 1.6;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .legend-item {
+      width: 45%;
+    }
+
+    .legend-item span.symbol {
+      color: #f8fafc;
+      font-family: monospace;
+      font-size: 12px;
+      font-weight: bold;
+      display: inline-block;
+      width: 30px;
+    }
+
+    .energy-wrapper {
+      width: 100%;
+      height: 10px;
+      background: #1e293b;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-top: 5px;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    #energy-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #38bdf8, #8bda4c);
+      transition: width 0.3s ease;
+    }
+
+    #pulse-btn {
+      width: 100%;
+      padding: 10px 0;
+      margin-top: 10px;
+      font-size: 13px;
+      font-weight: bold;
+      color: white;
+      background: #334155;
+      border: none;
+      border-radius: 8px;
+      cursor: not-allowed;
+      transition: all 0.2s;
+    }
+
+    #pulse-btn.ready {
+      background: linear-gradient(45deg, #38bdf8, #8bda4c);
+      cursor: pointer;
+      animation: glow 1.5s infinite alternate;
+    }
+
+    #pulse-btn.ready:hover {
+      transform: scale(1.05);
+    }
+
+    @keyframes glow {
+      from {
+        box-shadow: 0 0 5px #8bda4c;
+      }
+
+      to {
+        box-shadow: 0 0 15px #8bda4c;
+      }
+    }
+
+    #game-over {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(5, 11, 20, 0.95);
+      backdrop-filter: blur(5px);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+    }
+
+    #game-over h1 {
+      font-size: 48px;
+      margin: 0;
+      color: #ef4444;
+    }
+
+    button.restart {
+      padding: 12px 24px;
+      margin-top: 20px;
+      font-size: 16px;
+      font-weight: bold;
+      color: white;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    button.restart:hover {
+      background: #0284c7;
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="game-wrapper">
+    <div class="ui-panel">
+      <div class="box">
+        <h2>Score</h2>
+        <div id="score">0</div>
+        <div id="combo-text">2x COMBO!</div>
+      </div>
+      <div class="box">
+        <h2>Next Element</h2>
+        <div id="next-shape-preview"></div>
+        <div id="next-shape-name" style="font-size: 12px; font-weight:bold; color:#cbd5e1; margin-top: 5px;"></div>
+      </div>
+      <div class="box"
+        style="margin-top: auto; display:flex; flex-direction:column; justify-content:flex-end; padding-bottom: 10px;">
+        <h2>Gravity Pulse</h2>
+        <div class="energy-wrapper">
+          <div id="energy-bar"></div>
+        </div>
+        <button id="pulse-btn">Not Ready</button>
+        <p style="font-size: 9px; color: #475569; margin-top:5px; margin-bottom:0;">SPACE to agitate physics.</p>
+      </div>
+    </div>
+
+    <div id="canvas-container">
+      <div id="game-over">
+        <h1>Class Is Over</h1>
+        <p>Final Score: <span id="final-score" style="color:var(--accent); font-weight:bold; font-size:24px;">0</span>
+        </p>
+        <button class="restart" onclick="location.reload()">Begin New Simulation</button>
+      </div>
+    </div>
+
+    <div class="ui-panel" id="analysis-panel">
+      <h2 style="text-align: center; border-bottom: 1px solid #334155; padding-bottom:10px; margin-bottom: 5px;">
+        Geometry Scanner</h2>
+
+      <div id="idle-scanner">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2"
+          style="margin-bottom:10px;">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <circle cx="12" cy="8" r="1"></circle>
+        </svg>
+        Hover over canvas to scan elements<span class="scanning-dots"></span>
+      </div>
+
+      <div id="active-scanner" style="display: none; flex-direction: column; height: 100%;">
+        <div style="text-align:center; font-weight:bold; font-size:16px; margin-bottom:2px;" id="scan-name">Shape</div>
+        <div style="text-align:center; font-size:10px; color:#8bda4c; margin-bottom:12px;">Target Acquired</div>
+
+        <div id="fact-box">Historical/Math fact goes here.</div>
+
+        <div class="math-row">
+          <div class="math-label">Area Equation</div>
+          <div id="math-area"></div>
+        </div>
+        <div class="math-row">
+          <div class="math-label" id="perim-label">Perimeter Equation</div>
+          <div id="math-perimeter"></div>
+        </div>
+        <div class="math-row" id="angle-row">
+          <div class="math-label">Interior Angle Constant</div>
+          <div id="math-angle"></div>
+        </div>
+        <div class="math-row" id="sum-angle-row">
+          <div class="math-label">Sum of Inner Angles</div>
+          <div id="math-sum-angle"></div>
+        </div>
+
+        <div id="legend-box"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Matter.js Aliases ---
+    const Engine = Matter.Engine, Render = Matter.Render, Runner = Matter.Runner,
+      Bodies = Matter.Bodies, Composite = Matter.Composite, Events = Matter.Events, Body = Matter.Body;
+
+    const WIDTH = 450, HEIGHT = 680, WALL_THICKNESS = 40, DROP_LINE_Y = 100;
+    let score = 0, isGameOver = false, canDrop = true;
+    let comboMultiplier = 1; let lastMergeTime = 0; const COMBO_WINDOW = 1500;
+    let energy = 0; const MAX_ENERGY = 100;
+
+    // MATHEMATICAL CORE CONSTRAINT: Every shape shares exactly this edge length
+    const CONSTANT_EDGE = 30; //42;
+
+    // (Sides 3 to 30 + Circle)
+    const SHAPES = [
+      { tier: 0, sides: 3, color: '#ef4444', name: 'Triangle', points: 2, fact: "The simplest polygon. Due to its rigid structural physics, it is the foundation of ancient architecture and modern trusses." },
+      { tier: 1, sides: 4, color: '#f97316', name: 'Square', points: 4, fact: "The geometric basis of Cartesian coordinates. 'Squaring the circle' was a famous unsolved mathematical problem for millennia." },
+      { tier: 2, sides: 5, color: '#f59e0b', name: 'Pentagon', points: 8, fact: "Its diagonals inherently divide each other according to the Golden Ratio (φ ≈ 1.618), making it mathematically harmonious." },
+      { tier: 3, sides: 6, color: '#84cc16', name: 'Hexagon', points: 16, fact: "The most efficient tessellating shape. Famously utilized by bees to build honeycombs, maximizing area while minimizing wax." },
+      { tier: 4, sides: 7, color: '#10b981', name: 'Heptagon', points: 32, fact: "The smallest regular polygon absolutely impossible to perfectly construct using only a standard compass and straightedge." },
+      { tier: 5, sides: 8, color: '#14b8a6', name: 'Octagon', points: 64, fact: "Frequently used in classical and Islamic architecture to act as a smooth structural transition between a square base and a dome." },
+      { tier: 6, sides: 9, color: '#0ea5e9', name: 'Nonagon', points: 128, fact: "Bahá'í Houses of Worship are architecturally required to be built as nonagons to geometrically symbolize spiritual completeness." },
+      { tier: 7, sides: 10, color: '#3b82f6', name: 'Decagon', points: 256, fact: "Heavily tied to the Golden Ratio. The radius of its circumscribed circle relates to its side length by exactly φ." },
+      { tier: 8, sides: 11, color: '#6366f1', name: 'Hendecagon', points: 512, fact: "The Canadian 'Loonie' coin is an 11-sided curve of constant width, engineered specifically so it never jams vending machines." },
+      { tier: 9, sides: 12, color: '#8b5cf6', name: 'Dodecagon', points: 1024, fact: "Highly divisible. Used historically to map the 12 signs of the Zodiac and to perfectly divide the 360-degree clockface." },
+      { tier: 10, sides: 13, color: '#a855f7', name: 'Tridecagon', points: 2048, fact: "A prime-sided oddity. It is the smallest polygon where geometric angle trisectors fail to intersect symmetrically." },
+      { tier: 11, sides: 14, color: '#d946ef', name: 'Tetradecagon', points: 4096, fact: "In 14th-century Islamic geometric art, the 14-pointed star and 14-gon form the structural basis of intricate 'Girih' patterns." },
+      { tier: 12, sides: 15, color: '#ec4899', name: 'Pentadecagon', points: 8192, fact: "Ancient Greeks discovered they could construct this by brilliantly superimposing a triangle over a pentagon within the same circle." },
+      { tier: 13, sides: 16, color: '#f43f5e', name: 'Hexadecagon', points: 16384, fact: "Forms the mathematical basis of the 16-wind 'Compass Rose' utilized by ancient maritime navigators to chart the Mediterranean Sea." },
+      { tier: 14, sides: 17, color: '#fda4af', name: 'Heptadecagon', points: 32768, fact: "In 1796, Carl Gauss proved the 17-gon was mathematically constructible. He was so proud he requested it carved on his tombstone." },
+      { tier: 15, sides: 18, color: '#fca5a5', name: 'Octadecagon', points: 65536, fact: "The angles of the 18-gon are intrinsically linked to the 'Rule of 18' found in classical Japanese architectural joinery (Kigumi)." },
+      { tier: 16, sides: 19, color: '#fdba74', name: 'Enneadecagon', points: 131072, fact: "Ancient Babylonian astronomers used 19-sided geometry to track the Metonic cycle, perfectly aligning solar and lunar calendars." },
+      { tier: 17, sides: 20, color: '#fcd34d', name: 'Icosagon', points: 262144, fact: "In 1599, William Shakespeare’s original Globe Theatre was actually constructed as a colossal 20-sided wooden polygon, not a circle." },
+      { tier: 18, sides: 21, color: '#bef264', name: 'Icosihenagon', points: 524288, fact: "While impossible to draw with a standard compass, ancient Greeks constructed 21-gons using 'Neusis'—a highly marked, sliding ruler." },
+      { tier: 19, sides: 22, color: '#6ee7b7', name: 'Icosidigon', points: 1048576, fact: "Deeply tied to Archimedes' famous approximation of Pi (22/7). A circle divided into 22 geometric segments perfectly mirrors this ratio." },
+      { tier: 20, sides: 23, color: '#5eead4', name: 'Icositrigon', points: 2097152, fact: "A complex prime-sided polygon. Its specific interior angles formed the basis for 'Borda’s Circle', an 18th-century navigational instrument." },
+      { tier: 21, sides: 24, color: '#7dd3fc', name: 'Icositetragon', points: 4194304, fact: "Representing the 24 hours of the day, ancient celestial mechanics used 24-sided astrolabes to flawlessly map the solar day." },
+      { tier: 22, sides: 25, color: '#93c5fd', name: 'Icosipentagon', points: 8388608, fact: "The 25-gon is geometrically fascinating as it is the very first odd-sided regular polygon that is impossible to physically construct." },
+      { tier: 23, sides: 26, color: '#c4b5fd', name: 'Icosihexagon', points: 16777216, fact: "Matching the 26 letters of the Latin alphabet, it was frequently utilized to shape early rotating cryptographic cipher wheels." },
+      { tier: 24, sides: 27, color: '#d8b4fe', name: 'Icosiheptagon', points: 33554432, fact: "The only polygon whose side count is a perfect cube (3³). In ancient numerology, 27 geometrically represented the cosmic limit." },
+      { tier: 25, sides: 28, color: '#f0abfc', name: 'Icosioctagon', points: 67108864, fact: "28 is a 'Perfect Number' (equal to the sum of its divisors). Early astronomers used it to chart the 28 mansions of the lunar calendar." },
+      { tier: 26, sides: 29, color: '#f9a8d4', name: 'Icosienneagon', points: 134217728, fact: "Because a lunar month is precisely 29.53 days, Islamic mathematicians uniquely utilized 29-gons to design hyper-accurate lunar astrolabes." },
+      { tier: 27, sides: 30, color: '#e11d48', name: 'Triacontagon', points: 268435456, fact: "The absolute largest geometric polygon manually drafted by Renaissance architects to approximate giant stone columns." },
+      { tier: 28, sides: 0, color: '#ffffff', name: 'Perfect Circle', points: 536870912, fact: "The transcendent limit of geometry as sides approach infinity. It possesses the maximum mathematical area-to-perimeter ratio in the universe." }
+    ];
+
+    const WILDCARD_TIER = -1; const VOID_TIER = -2;
+    const WILDCARD = { tier: WILDCARD_TIER, sides: 4, radius: 14, color: '#ffffff', name: 'Refracting Prism', points: 50, fact: "In 1666, Sir Isaac Newton passed white light through a glass prism, proving mathematically that color is an intrinsic property of light." };
+    const VOID = { tier: VOID_TIER, sides: 12, radius: 14, color: '#000000', name: 'Void Anomaly', points: 100, fact: "A theoretical representation of a gravitational singularity—mass compressed into zero volume, resulting in infinite density." };
+
+    // Physics Setup
+    const engine = Engine.create();
+    const render = Render.create({ element: document.getElementById('canvas-container'), engine: engine, options: { width: WIDTH, height: HEIGHT, wireframes: false, background: 'transparent' } });
+
+    const floor = Bodies.rectangle(WIDTH / 2, HEIGHT, WIDTH, WALL_THICKNESS, { isStatic: true, render: { fillStyle: '#1e293b' } });
+    const leftWall = Bodies.rectangle(0, HEIGHT / 2, WALL_THICKNESS, HEIGHT, { isStatic: true, render: { fillStyle: '#1e293b' } });
+    const rightWall = Bodies.rectangle(WIDTH, HEIGHT / 2, WALL_THICKNESS, HEIGHT, { isStatic: true, render: { fillStyle: '#1e293b' } });
+    Composite.add(engine.world, [floor, leftWall, rightWall]);
+    Render.run(render); const runner = Runner.create(); Runner.run(runner, engine);
+
+    let currentX = WIDTH / 2, trueMouseX = WIDTH / 2, trueMouseY = 0, currentHoverId = null;
+    let currentShapeTier = getRandomStartTier(), nextShapeTier = getRandomStartTier();
+    let mergeQueue = [], deleteQueue = [];
+
+    // Allow spawning up to tier 5
+    function getRandomStartTier() {
+      const roll = Math.random(); if (roll < 0.03) return VOID_TIER; if (roll < 0.15) return WILDCARD_TIER;
+      return Math.floor(Math.random() * 6);
+    }
+
+    // Compute the exact radius required to ensure the given sides result in an edge length of 42
+    function getRadius(sides) {
+      if (sides < 0) return 14;    // Special Anomaly Radius
+
+      // If it's the Circle (0 sides), make it slightly larger than the 30-sided polygon!
+      if (sides === 0) {
+        let maxPolyRadius = CONSTANT_EDGE / (2 * Math.sin(Math.PI / 30));
+        return maxPolyRadius + 5;
+      }
+
+      // Normal polygon radius formula
+      return CONSTANT_EDGE / (2 * Math.sin(Math.PI / sides));
+    }
+
+    function getShapeDef(tier) {
+      if (tier === WILDCARD_TIER) return WILDCARD; if (tier === VOID_TIER) return VOID; return SHAPES[tier];
+    }
+
+    function createShape(x, y, tier) {
+      const shapeDef = getShapeDef(tier);
+      const radius = getRadius(shapeDef.sides);
+
+      // Dynamic friction scaled down carefully for 30 objects
+      let dynamicFriction = Math.max(0.05, 0.8 - (tier * 0.025));
+      const options = {
+        restitution: (tier < 0) ? 0.8 : 0.05, friction: dynamicFriction, density: (tier < 0) ? 0.05 : 0.005 * (tier + 1),
+        render: { fillStyle: shapeDef.color, strokeStyle: tier === VOID_TIER ? '#ef4444' : '#ffffff', lineWidth: tier < 0 ? 3 : 2 },
+        plugin: { tier: tier, originalStroke: tier === VOID_TIER ? '#ef4444' : '#ffffff' }
+      };
+
+      if (tier === WILDCARD_TIER) return Bodies.polygon(x, y, 4, radius, options);
+      else if (tier === VOID_TIER) { options.render.fillStyle = '#050b14'; return Bodies.polygon(x, y, 10, radius, options); }
+      else if (shapeDef.sides > 0) { options.chamfer = { radius: Math.min(4, radius / 6) }; return Bodies.polygon(x, y, shapeDef.sides, radius, options); }
+      else return Bodies.circle(x, y, radius, options);
+    }
+
+    function updateNextShapeUI() {
+      const shapeDef = getShapeDef(nextShapeTier);
+      const preview = document.getElementById('next-shape-preview');
+      const nameEl = document.getElementById('next-shape-name');
+      const r = getRadius(shapeDef.sides);
+
+      const baseSize = 80; const center = baseSize / 2;
+      const drawR = shapeDef.sides > 0 ? Math.min(30, r) : 30;
+
+      let svgContent = '';
+      if (nextShapeTier === WILDCARD_TIER) {
+        svgContent = `<polygon points="${center},${center - drawR} ${center + drawR},${center} ${center},${center + drawR} ${center - drawR},${center}" fill="${shapeDef.color}" stroke="#d946ef" stroke-width="4" filter="drop-shadow(0 0 6px #d946ef)"/>`;
+        nameEl.style.color = '#ffffff'; nameEl.style.textShadow = "0 0 8px #d946ef";
+      } else if (nextShapeTier === VOID_TIER) {
+        let points = [];
+        for (let i = 0; i < 10; i++) {
+          const angle = (i * 2 * Math.PI / 10); const rad = i % 2 === 0 ? drawR : drawR * 0.5;
+          points.push(`${center + rad * Math.cos(angle)},${center + rad * Math.sin(angle)}`);
+        }
+        svgContent = `<polygon points="${points.join(' ')}" fill="#050b14" stroke="#ef4444" stroke-width="3" filter="drop-shadow(0 0 6px #ef4444)"/>`;
+        nameEl.style.color = '#ef4444'; nameEl.style.textShadow = "0 0 8px #ef4444";
+      } else if (shapeDef.sides > 0) {
+        let points = [];
+        for (let i = 0; i < shapeDef.sides; i++) {
+          const angle = (i * 2 * Math.PI / shapeDef.sides) - (Math.PI / 2);
+          points.push(`${center + drawR * Math.cos(angle)},${center + drawR * Math.sin(angle)}`);
+        }
+        svgContent = `<polygon points="${points.join(' ')}" fill="${shapeDef.color}" stroke="white" stroke-width="2"/>`;
+        nameEl.style.color = shapeDef.color; nameEl.style.textShadow = "none";
+      } else {
+        svgContent = `<circle cx="${center}" cy="${center}" r="${drawR}" fill="${shapeDef.color}" stroke="white" stroke-width="2"/>`;
+        nameEl.style.color = shapeDef.color; nameEl.style.textShadow = "none";
+      }
+      preview.innerHTML = `<svg width="${baseSize}" height="${baseSize}">${svgContent}</svg>`; nameEl.innerText = shapeDef.name;
+    }
+
+    document.getElementById('canvas-container').addEventListener('mousemove', (e) => {
+      if (isGameOver) return;
+      const rect = render.canvas.getBoundingClientRect();
+      trueMouseX = e.clientX - rect.left; trueMouseY = e.clientY - rect.top;
+      currentX = trueMouseX; const maxRadius = getRadius(getShapeDef(currentShapeTier).sides);
+      currentX = Math.max(WALL_THICKNESS / 2 + maxRadius, Math.min(WIDTH - WALL_THICKNESS / 2 - maxRadius, currentX));
+    });
+
+    document.getElementById('canvas-container').addEventListener('click', () => {
+      if (isGameOver || !canDrop) return;
+      Composite.add(engine.world, createShape(currentX, DROP_LINE_Y, currentShapeTier));
+      canDrop = false; currentShapeTier = nextShapeTier; nextShapeTier = getRandomStartTier();
+      updateNextShapeUI(); setTimeout(() => { if (!isGameOver) canDrop = true; }, 750);
+    });
+
+    // Physics Updates & Telemetry
+    Events.on(engine, 'beforeUpdate', () => {
+      const bodies = Composite.allBodies(engine.world).filter(b => b.plugin && b.plugin.tier !== undefined);
+      const hovered = Matter.Query.point(bodies, { x: trueMouseX, y: trueMouseY });
+
+      if (currentHoverId !== null) {
+        const oldBody = bodies.find(b => b.id === currentHoverId);
+        if (oldBody) { oldBody.render.lineWidth = oldBody.plugin.tier < 0 ? 3 : 2; oldBody.render.strokeStyle = oldBody.plugin.originalStroke; }
+      }
+
+      if (hovered.length > 0 && !isGameOver) {
+        const target = hovered[0]; currentHoverId = target.id;
+        target.render.lineWidth = 4; target.render.strokeStyle = '#ffffff';
+        updateMathPanel(target.plugin.tier);
+      } else {
+        if (currentHoverId !== null) {
+          currentHoverId = null;
+          document.getElementById('idle-scanner').style.display = 'flex'; document.getElementById('active-scanner').style.display = 'none';
+        }
+      }
+
+      while (deleteQueue.length > 0) {
+        const del = deleteQueue.pop(); Composite.remove(engine.world, [del.bodyA, del.bodyB]); updateStats(VOID.points); triggerScreenShake();
+      }
+      while (mergeQueue.length > 0) {
+        const merge = mergeQueue.pop(); const nextTier = merge.targetTier + 1;
+        const newX = (merge.bodyA.position.x + merge.bodyB.position.x) / 2; const newY = (merge.bodyA.position.y + merge.bodyB.position.y) / 2;
+        Composite.remove(engine.world, [merge.bodyA, merge.bodyB]);
+        updateStats(SHAPES[merge.targetTier].points); if (nextTier >= 4) triggerScreenShake();
+        Composite.add(engine.world, createShape(newX, newY, nextTier));
+      }
+    });
+
+    let lastRenderedTier = null;
+    function updateMathPanel(tier) {
+      if (tier === lastRenderedTier && document.getElementById('active-scanner').style.display === 'flex') return;
+      lastRenderedTier = tier;
+
+      document.getElementById('idle-scanner').style.display = 'none';
+      document.getElementById('active-scanner').style.display = 'flex';
+
+      const shapeDef = getShapeDef(tier); const nameEl = document.getElementById('scan-name');
+      nameEl.innerText = shapeDef.name; nameEl.style.color = shapeDef.color;
+      document.getElementById('fact-box').innerText = shapeDef.fact;
+
+      const angleRow = document.getElementById('angle-row');
+      const sumAngleRow = document.getElementById('sum-angle-row'); // New Row Variable
+      const perimLabel = document.getElementById('perim-label');
+      const legendBox = document.getElementById('legend-box');
+
+      // Add strSumAngle to our string variables
+      let strArea = '', strPerim = '', strAngle = '', strSumAngle = '';
+
+      const makeItem = (sym, desc) => `<div class="legend-item"><span class="symbol">${sym}</span> ${desc}</div>`;
+
+      if (tier === VOID_TIER) {
+        nameEl.style.color = '#ef4444'; nameEl.style.textShadow = "0 0 10px #ef4444";
+        perimLabel.innerText = "Density Singularity";
+        angleRow.style.display = 'none'; sumAngleRow.style.display = 'none'; // Hide angles
+
+        strArea = `A = \\lim_{r \\to 0} \\pi r^2 = 0`; strPerim = `\\rho = \\lim_{V \\to 0} \\frac{m}{V} = \\infty`;
+        legendBox.innerHTML = makeItem("lim", "Math Limit") + makeItem("m, V", "Mass, Volume");
+      }
+      else if (tier === WILDCARD_TIER) {
+        nameEl.style.textShadow = "0 0 10px #ffffff";
+        perimLabel.innerText = "Harmonic Divergence";
+        angleRow.style.display = 'none'; sumAngleRow.style.display = 'none'; // Hide angles
+
+        strArea = `\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}`; strPerim = `\\sum_{n=1}^{\\infty} \\frac{1}{n} = \\infty`;
+        legendBox.innerHTML = makeItem("∫", "Integral") + makeItem("e", "Euler's Num") + makeItem("∑", "Infinite Series") + makeItem("π", "Pi (~3.14)");
+      }
+      else if (shapeDef.sides === 0) {
+        perimLabel.innerText = "Circumference Equation";
+        angleRow.style.display = 'none'; sumAngleRow.style.display = 'none'; // Hide angles for circle
+
+        strArea = `A = \\pi r^2`; strPerim = `C = 2\\pi r`;
+        legendBox.innerHTML = makeItem("r", "Radius (to edge)") + makeItem("π", "Pi (~3.14)");
+      }
+      else {
+        perimLabel.innerText = "Perimeter Equation";
+        angleRow.style.display = 'block'; sumAngleRow.style.display = 'block'; // Show angles!
+
+        const n = shapeDef.sides;
+        const angleValue = ((n - 2) * 180 / n).toFixed(2);
+        const sumAngleValue = (n - 2) * 180; // Calculate the Sum
+
+        strArea = `A = \\frac{1}{2}nr^2\\sin\\left(\\frac{2\\pi}{n}\\right) = \\frac{n}{4}s^2\\cot\\left(\\frac{\\pi}{n}\\right)`;
+        strPerim = `P = 2nr\\sin\\left(\\frac{\\pi}{n}\\right) = n \\cdot s`;
+        strAngle = `\\theta = \\frac{(n-2) \\times 180^\\circ}{n} = ${angleValue}^\\circ`;
+        strSumAngle = `\\Sigma \\theta = (n-2) \\times 180^\\circ = ${sumAngleValue}^\\circ`; // Output Sum KaTeX String
+
+        legendBox.innerHTML =
+          makeItem("s", "Edge Length (42)") +
+          makeItem("r", "Circumradius") +
+          makeItem("n", "Number of sides") +
+          makeItem("Σ", "Summation (Total)") +
+          makeItem("sin", "Sine Ratio") +
+          makeItem("π", "Pi (180° rad)");
+      }
+
+      // Render all 4 math equations using KaTeX
+      katex.render(strArea, document.getElementById('math-area'), { throwOnError: false, displayMode: true });
+      katex.render(strPerim, document.getElementById('math-perimeter'), { throwOnError: false, displayMode: true });
+      if (strAngle) katex.render(strAngle, document.getElementById('math-angle'), { throwOnError: false, displayMode: true });
+      if (strSumAngle) katex.render(strSumAngle, document.getElementById('math-sum-angle'), { throwOnError: false, displayMode: true });
+    }
+
+    function updateStats(basePoints) {
+      const now = Date.now();
+      if (now - lastMergeTime < COMBO_WINDOW) {
+        comboMultiplier++; document.getElementById('combo-text').innerText = `${comboMultiplier}x COMBO!`;
+        document.getElementById('combo-text').style.opacity = 1; document.getElementById('combo-text').style.transform = `scale(${Math.min(1.5, 1 + comboMultiplier * 0.1)})`;
+      } else { comboMultiplier = 1; document.getElementById('combo-text').style.opacity = 0; }
+      lastMergeTime = now; score += (basePoints * comboMultiplier);
+      document.getElementById('score').innerText = score; document.getElementById('score').style.transform = "scale(1.2)";
+      setTimeout(() => document.getElementById('score').style.transform = "scale(1)", 150);
+
+      if (energy < MAX_ENERGY) {
+        energy = Math.min(MAX_ENERGY, energy + Math.max(3, (basePoints * comboMultiplier) / 3));
+        document.getElementById('energy-bar').style.width = `${energy}%`;
+        if (energy >= MAX_ENERGY) {
+          const btn = document.getElementById('pulse-btn'); btn.className = 'ready'; btn.innerText = "PULSE READY!";
+        }
+      }
+    }
+
+    function triggerScreenShake() {
+      const container = document.getElementById('canvas-container');
+      container.classList.remove('shake'); void container.offsetWidth; container.classList.add('shake');
+    }
+
+    function triggerPulse() {
+      if (energy < MAX_ENERGY || isGameOver) return;
+      energy = 0; document.getElementById('energy-bar').style.width = '0%';
+      const btn = document.getElementById('pulse-btn'); btn.className = ''; btn.innerText = "Not Ready";
+      triggerScreenShake();
+      Composite.allBodies(engine.world).forEach(body => {
+        if (body.plugin.tier !== undefined) {
+          const fMag = 0.045 * body.mass; Body.applyForce(body, body.position, { x: (Math.random() - 0.5) * fMag * 0.5, y: -fMag });
+        }
+      });
+    }
+    document.getElementById('pulse-btn').addEventListener('click', triggerPulse);
+    window.addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); triggerPulse(); } });
+
+    Events.on(render, 'afterRender', () => {
+      const context = render.context;
+      context.beginPath(); context.moveTo(WALL_THICKNESS / 2, DROP_LINE_Y + 50); context.lineTo(WIDTH - WALL_THICKNESS / 2, DROP_LINE_Y + 50);
+      context.strokeStyle = 'rgba(239, 68, 68, 0.4)'; context.lineWidth = 2; context.setLineDash([10, 10]); context.stroke(); context.setLineDash([]);
+
+      if (canDrop && !isGameOver) {
+        context.beginPath(); context.moveTo(currentX, DROP_LINE_Y); context.lineTo(currentX, HEIGHT);
+        context.strokeStyle = 'rgba(255, 255, 255, 0.1)'; context.lineWidth = 2; context.stroke();
+
+        const shapeDef = getShapeDef(currentShapeTier); const r = getRadius(shapeDef.sides);
+        context.globalAlpha = 0.5; context.fillStyle = shapeDef.color;
+        if (currentShapeTier === VOID_TIER) { context.fillStyle = '#050b14'; context.strokeStyle = '#ef4444'; context.lineWidth = 3; }
+        else if (currentShapeTier === WILDCARD_TIER) { context.strokeStyle = '#d946ef'; context.lineWidth = 3; }
+        else { context.strokeStyle = '#ffffff'; context.lineWidth = 2; }
+
+        context.beginPath();
+        if (currentShapeTier === WILDCARD_TIER) {
+          context.moveTo(currentX, DROP_LINE_Y - r); context.lineTo(currentX + r, DROP_LINE_Y);
+          context.lineTo(currentX, DROP_LINE_Y + r); context.lineTo(currentX - r, DROP_LINE_Y);
+        } else if (currentShapeTier === VOID_TIER) {
+          for (let i = 0; i < 10; i++) {
+            const angle = (i * 2 * Math.PI / 10); const rad = i % 2 === 0 ? r : r * 0.5;
+            const px = currentX + rad * Math.cos(angle); const py = DROP_LINE_Y + rad * Math.sin(angle);
+            if (i === 0) context.moveTo(px, py); else context.lineTo(px, py);
+          }
+        } else if (shapeDef.sides > 0) {
+          for (let i = 0; i < shapeDef.sides; i++) {
+            const angle = (i * 2 * Math.PI / shapeDef.sides) - (Math.PI / 2);
+            const px = currentX + r * Math.cos(angle); const py = DROP_LINE_Y + r * Math.sin(angle);
+            if (i === 0) context.moveTo(px, py); else context.lineTo(px, py);
+          }
+        } else { context.arc(currentX, DROP_LINE_Y, r, 0, 2 * Math.PI); }
+        context.closePath(); context.fill(); context.stroke(); context.globalAlpha = 1.0;
+      }
+    });
+
+    Events.on(engine, 'collisionStart', (event) => {
+      event.pairs.forEach((pair) => {
+        const bodyA = pair.bodyA, bodyB = pair.bodyB;
+        if (bodyA.plugin.tier !== undefined && bodyB.plugin.tier !== undefined && !bodyA.isMerging && !bodyB.isMerging) {
+          const tierA = bodyA.plugin.tier, tierB = bodyB.plugin.tier;
+          if (tierA === VOID_TIER || tierB === VOID_TIER) {
+            bodyA.isMerging = true; bodyB.isMerging = true; deleteQueue.push({ bodyA, bodyB }); return;
+          }
+          let isWildcardMerge = (tierA === WILDCARD_TIER || tierB === WILDCARD_TIER);
+          if (tierA === tierB || isWildcardMerge) {
+            let maxTier = Math.max(tierA, tierB); let targetTier = maxTier === WILDCARD_TIER ? 0 : maxTier;
+            if (targetTier >= SHAPES.length - 1 && !isWildcardMerge) return;
+            if (targetTier >= SHAPES.length - 1 && isWildcardMerge) targetTier = SHAPES.length - 2;
+            bodyA.isMerging = true; bodyB.isMerging = true; mergeQueue.push({ bodyA, bodyB, targetTier });
+          }
+        }
+      });
+    });
+
+    Events.on(engine, 'afterUpdate', () => {
+      if (isGameOver) return;
+      for (let body of Composite.allBodies(engine.world)) {
+        if (body.plugin.tier !== undefined && !body.isMerging) {
+          if (body.position.y < DROP_LINE_Y + 15 && Math.abs(body.velocity.y) < 0.05 && Math.abs(body.velocity.x) < 0.05) {
+            isGameOver = true; document.getElementById('game-over').style.display = 'flex';
+            document.getElementById('final-score').innerText = score; Runner.stop(runner); break;
+          }
+        }
+      }
+    });
+
+    updateNextShapeUI();
+  </script>
+</body>
+
+</html>
