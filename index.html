@@ -46,6 +46,7 @@
       justify-content: center;
     }
 
+    /* SCALABLE MOBILE CANVAS CSS */
     #canvas-container {
       position: relative;
       background-color: var(--container-color);
@@ -53,12 +54,15 @@
       box-shadow: 0 15px 50px rgba(0, 0, 0, 0.9);
       overflow: hidden;
       transition: transform 0.05s;
-      height: 680px;
-      width: 450px;
+      width: 100%;
+      max-width: 450px;
+      aspect-ratio: 450 / 680;
     }
 
     canvas {
       display: block;
+      width: 100% !important;
+      height: 100% !important;
     }
 
     .shake {
@@ -99,7 +103,6 @@
       gap: 15px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
       box-sizing: border-box;
-      height: 680px;
     }
 
     .box {
@@ -142,7 +145,6 @@
       align-items: center;
     }
 
-    /* Right Math Panel */
     #analysis-panel {
       width: 400px;
       text-align: left;
@@ -167,12 +169,6 @@
       text-transform: uppercase;
       margin-bottom: 2px;
       letter-spacing: 1px;
-    }
-
-    .math-row {
-      margin: 8px 0;
-      padding-bottom: 4px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.02);
     }
 
     #idle-scanner {
@@ -337,6 +333,45 @@
       background: #0284c7;
       transform: scale(1.05);
     }
+
+    /* RESPONSIVE LAYOUT FOR MOBILE */
+    @media (max-width: 950px) {
+      body {
+        height: auto;
+        overflow-y: auto;
+        padding: 20px;
+        align-items: flex-start;
+      }
+
+      #game-wrapper {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .ui-panel {
+        width: 100%;
+        max-width: 450px;
+        flex-direction: row;
+        flex-wrap: wrap;
+        height: auto;
+      }
+
+      .ui-panel>.box {
+        flex: 1;
+        min-width: 30%;
+        margin-top: 0 !important;
+      }
+
+      #analysis-panel {
+        flex-direction: column;
+        width: 100%;
+        max-width: 450px;
+      }
+
+      #active-scanner {
+        height: auto;
+      }
+    }
   </style>
 </head>
 
@@ -370,7 +405,7 @@
         <h1>Class Is Over</h1>
         <p>Final Score: <span id="final-score" style="color:var(--accent); font-weight:bold; font-size:24px;">0</span>
         </p>
-        <button class="restart" onclick="location.reload()">Begin New Simulation</button>
+        <button class="restart" onclick="location.reload()">Begin New Class</button>
       </div>
     </div>
 
@@ -385,7 +420,7 @@
           <line x1="12" y1="16" x2="12" y2="12"></line>
           <circle cx="12" cy="8" r="1"></circle>
         </svg>
-        Hover over canvas to scan elements<span class="scanning-dots"></span>
+        Drag or hover cursor to scan elements<span class="scanning-dots"></span>
       </div>
 
       <div id="active-scanner" style="display: none; flex-direction: column; height: 100%;">
@@ -424,10 +459,12 @@
     const WIDTH = 450, HEIGHT = 680, WALL_THICKNESS = 40, DROP_LINE_Y = 100;
     let score = 0, isGameOver = false, canDrop = true;
     let comboMultiplier = 1; let lastMergeTime = 0; const COMBO_WINDOW = 1500;
-    let energy = 0; const MAX_ENERGY = 100;
 
-    // MATHEMATICAL CORE CONSTRAINT: Every shape shares exactly this edge length
-    const CONSTANT_EDGE = 30; //42;
+    // ENERGY & PULSE VARIABLES
+    let energy = 0; const MAX_ENERGY = 100;
+    let pulseInvincibility = 0; // The timestamp until which pieces flying won't kill you
+
+    const CONSTANT_EDGE = 30;
 
     // (Sides 3 to 30 + Circle)
     const SHAPES = [
@@ -490,13 +527,11 @@
     function getRadius(sides) {
       if (sides < 0) return 14;    // Special Anomaly Radius
 
-      // If it's the Circle (0 sides), make it slightly larger than the 30-sided polygon!
+      // If it's the Circle (0 sides), make it slightly larger than the 30-sided polygon
       if (sides === 0) {
         let maxPolyRadius = CONSTANT_EDGE / (2 * Math.sin(Math.PI / 30));
         return maxPolyRadius + 5;
       }
-
-      // Normal polygon radius formula
       return CONSTANT_EDGE / (2 * Math.sin(Math.PI / sides));
     }
 
@@ -508,7 +543,6 @@
       const shapeDef = getShapeDef(tier);
       const radius = getRadius(shapeDef.sides);
 
-      // Dynamic friction scaled down carefully for 30 objects
       let dynamicFriction = Math.max(0.05, 0.8 - (tier * 0.025));
       const options = {
         restitution: (tier < 0) ? 0.8 : 0.05, friction: dynamicFriction, density: (tier < 0) ? 0.05 : 0.005 * (tier + 1),
@@ -558,20 +592,51 @@
       preview.innerHTML = `<svg width="${baseSize}" height="${baseSize}">${svgContent}</svg>`; nameEl.innerText = shapeDef.name;
     }
 
-    document.getElementById('canvas-container').addEventListener('mousemove', (e) => {
+    // --- RESPONSIVE CONTROLS (DESKTOP & MOBILE TOUCH) ---
+    const containerEl = document.getElementById('canvas-container');
+
+    function handlePointerMove(clientX, clientY) {
       if (isGameOver) return;
       const rect = render.canvas.getBoundingClientRect();
-      trueMouseX = e.clientX - rect.left; trueMouseY = e.clientY - rect.top;
-      currentX = trueMouseX; const maxRadius = getRadius(getShapeDef(currentShapeTier).sides);
-      currentX = Math.max(WALL_THICKNESS / 2 + maxRadius, Math.min(WIDTH - WALL_THICKNESS / 2 - maxRadius, currentX));
-    });
 
-    document.getElementById('canvas-container').addEventListener('click', () => {
+      // Scale ratios ensure mouse aim stays perfect even if CSS squishes the canvas
+      const scaleX = WIDTH / rect.width;
+      const scaleY = HEIGHT / rect.height;
+
+      trueMouseX = (clientX - rect.left) * scaleX;
+      trueMouseY = (clientY - rect.top) * scaleY;
+
+      currentX = trueMouseX;
+      const maxRadius = getRadius(getShapeDef(currentShapeTier).sides);
+      currentX = Math.max(WALL_THICKNESS / 2 + maxRadius, Math.min(WIDTH - WALL_THICKNESS / 2 - maxRadius, currentX));
+    }
+
+    containerEl.addEventListener('mousemove', (e) => handlePointerMove(e.clientX, e.clientY));
+
+    containerEl.addEventListener('touchstart', (e) => {
+      const touch = e.touches[0] || e.changedTouches[0];
+      handlePointerMove(touch.clientX, touch.clientY);
+    }, { passive: true });
+
+    containerEl.addEventListener('touchmove', (e) => {
+      e.preventDefault(); // Prevents screen from scrolling while you aim!
+      const touch = e.touches[0] || e.changedTouches[0];
+      handlePointerMove(touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    function handleDrop() {
       if (isGameOver || !canDrop) return;
       Composite.add(engine.world, createShape(currentX, DROP_LINE_Y, currentShapeTier));
       canDrop = false; currentShapeTier = nextShapeTier; nextShapeTier = getRandomStartTier();
       updateNextShapeUI(); setTimeout(() => { if (!isGameOver) canDrop = true; }, 750);
-    });
+    }
+
+    containerEl.addEventListener('click', handleDrop);
+    containerEl.addEventListener('touchend', (e) => {
+      e.preventDefault(); // Stops double dropping from "ghost clicks" on hybrid phones
+      handleDrop();
+    }, { passive: false });
+
 
     // Physics Updates & Telemetry
     Events.on(engine, 'beforeUpdate', () => {
@@ -619,11 +684,10 @@
       document.getElementById('fact-box').innerText = shapeDef.fact;
 
       const angleRow = document.getElementById('angle-row');
-      const sumAngleRow = document.getElementById('sum-angle-row'); // New Row Variable
+      const sumAngleRow = document.getElementById('sum-angle-row');
       const perimLabel = document.getElementById('perim-label');
       const legendBox = document.getElementById('legend-box');
 
-      // Add strSumAngle to our string variables
       let strArea = '', strPerim = '', strAngle = '', strSumAngle = '';
 
       const makeItem = (sym, desc) => `<div class="legend-item"><span class="symbol">${sym}</span> ${desc}</div>`;
@@ -631,7 +695,7 @@
       if (tier === VOID_TIER) {
         nameEl.style.color = '#ef4444'; nameEl.style.textShadow = "0 0 10px #ef4444";
         perimLabel.innerText = "Density Singularity";
-        angleRow.style.display = 'none'; sumAngleRow.style.display = 'none'; // Hide angles
+        angleRow.style.display = 'none'; sumAngleRow.style.display = 'none';
 
         strArea = `A = \\lim_{r \\to 0} \\pi r^2 = 0`; strPerim = `\\rho = \\lim_{V \\to 0} \\frac{m}{V} = \\infty`;
         legendBox.innerHTML = makeItem("lim", "Math Limit") + makeItem("m, V", "Mass, Volume");
@@ -639,33 +703,33 @@
       else if (tier === WILDCARD_TIER) {
         nameEl.style.textShadow = "0 0 10px #ffffff";
         perimLabel.innerText = "Harmonic Divergence";
-        angleRow.style.display = 'none'; sumAngleRow.style.display = 'none'; // Hide angles
+        angleRow.style.display = 'none'; sumAngleRow.style.display = 'none';
 
         strArea = `\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}`; strPerim = `\\sum_{n=1}^{\\infty} \\frac{1}{n} = \\infty`;
         legendBox.innerHTML = makeItem("∫", "Integral") + makeItem("e", "Euler's Num") + makeItem("∑", "Infinite Series") + makeItem("π", "Pi (~3.14)");
       }
       else if (shapeDef.sides === 0) {
         perimLabel.innerText = "Circumference Equation";
-        angleRow.style.display = 'none'; sumAngleRow.style.display = 'none'; // Hide angles for circle
+        angleRow.style.display = 'none'; sumAngleRow.style.display = 'none';
 
         strArea = `A = \\pi r^2`; strPerim = `C = 2\\pi r`;
         legendBox.innerHTML = makeItem("r", "Radius (to edge)") + makeItem("π", "Pi (~3.14)");
       }
       else {
         perimLabel.innerText = "Perimeter Equation";
-        angleRow.style.display = 'block'; sumAngleRow.style.display = 'block'; // Show angles!
+        angleRow.style.display = 'block'; sumAngleRow.style.display = 'block';
 
         const n = shapeDef.sides;
         const angleValue = ((n - 2) * 180 / n).toFixed(2);
-        const sumAngleValue = (n - 2) * 180; // Calculate the Sum
+        const sumAngleValue = (n - 2) * 180;
 
         strArea = `A = \\frac{1}{2}nr^2\\sin\\left(\\frac{2\\pi}{n}\\right) = \\frac{n}{4}s^2\\cot\\left(\\frac{\\pi}{n}\\right)`;
         strPerim = `P = 2nr\\sin\\left(\\frac{\\pi}{n}\\right) = n \\cdot s`;
         strAngle = `\\theta = \\frac{(n-2) \\times 180^\\circ}{n} = ${angleValue}^\\circ`;
-        strSumAngle = `\\Sigma \\theta = (n-2) \\times 180^\\circ = ${sumAngleValue}^\\circ`; // Output Sum KaTeX String
+        strSumAngle = `\\Sigma \\theta = (n-2) \\times 180^\\circ = ${sumAngleValue}^\\circ`;
 
         legendBox.innerHTML =
-          makeItem("s", "Edge Length (42)") +
+          makeItem("s", "Edge Length (30)") +
           makeItem("r", "Circumradius") +
           makeItem("n", "Number of sides") +
           makeItem("Σ", "Summation (Total)") +
@@ -673,7 +737,6 @@
           makeItem("π", "Pi (180° rad)");
       }
 
-      // Render all 4 math equations using KaTeX
       katex.render(strArea, document.getElementById('math-area'), { throwOnError: false, displayMode: true });
       katex.render(strPerim, document.getElementById('math-perimeter'), { throwOnError: false, displayMode: true });
       if (strAngle) katex.render(strAngle, document.getElementById('math-angle'), { throwOnError: false, displayMode: true });
@@ -709,6 +772,10 @@
       energy = 0; document.getElementById('energy-bar').style.width = '0%';
       const btn = document.getElementById('pulse-btn'); btn.className = ''; btn.innerText = "Not Ready";
       triggerScreenShake();
+
+      // Grant exactly 2.5 seconds of game-over immunity so flying shapes don't end the game!
+      pulseInvincibility = Date.now() + 2500;
+
       Composite.allBodies(engine.world).forEach(body => {
         if (body.plugin.tier !== undefined) {
           const fMag = 0.045 * body.mass; Body.applyForce(body, body.position, { x: (Math.random() - 0.5) * fMag * 0.5, y: -fMag });
@@ -775,6 +842,9 @@
 
     Events.on(engine, 'afterUpdate', () => {
       if (isGameOver) return;
+      // SKIP checking for game over if the player recently pulsed (2.5 seconds safe zone)
+      if (Date.now() < pulseInvincibility) return;
+
       for (let body of Composite.allBodies(engine.world)) {
         if (body.plugin.tier !== undefined && !body.isMerging) {
           if (body.position.y < DROP_LINE_Y + 15 && Math.abs(body.velocity.y) < 0.05 && Math.abs(body.velocity.x) < 0.05) {
