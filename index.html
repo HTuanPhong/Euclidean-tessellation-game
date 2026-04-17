@@ -743,7 +743,7 @@
       document.getElementById('active-scanner').style.display = 'flex';
 
       const shapeDef = getShapeDef(tier); const nameEl = document.getElementById('scan-name');
-      nameEl.innerText = shapeDef.name; nameEl.style.color = shapeDef.color;
+      nameEl.innerText = shapeDef.name + ' (' + shapeDef.sides + ')'; nameEl.style.color = shapeDef.color;
       document.getElementById('fact-box').innerText = shapeDef.fact;
 
       const angleRow = document.getElementById('angle-row');
